@@ -1,6 +1,7 @@
 import streamlit as st
 import pickle
-from fpdf import FPDF
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 # Load vectorizer once
 with open('vectorizer.pkl', 'rb') as f:
@@ -14,21 +15,35 @@ models = {
     "Decision Tree": "DecisionTree_model.pkl"
 }
 
+# PDF generation using reportlab
 def generate_pdf(text, model_name, prediction, filename="result.pdf"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=16)
-    pdf.cell(0, 10, "Sentiment Analysis Result", ln=True, align="C")
-    pdf.ln(10)
-    pdf.set_font("Arial", size=12)
-    pdf.cell(0, 10, f"Model Used: {model_name}", ln=True)
-    pdf.ln(5)
-    pdf.multi_cell(0, 10, f"Input Text:\n{text}")
-    pdf.ln(5)
-    pdf.cell(0, 10, f"Predicted Sentiment: {prediction}", ln=True)
-    pdf.output(filename)
+    c = canvas.Canvas(filename, pagesize=letter)
+    width, height = letter
+
+    # Title
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(width / 2, height - 50, "Sentiment Analysis Result")
+
+    # Model used & prediction
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 100, f"Model Used: {model_name}")
+    c.drawString(50, height - 120, f"Predicted Sentiment: {prediction}")
+
+    # Input text (multi-line support)
+    text_lines = text.split("\n")
+    y = height - 160
+    for line in text_lines:
+        c.drawString(50, y, line)
+        y -= 20
+        if y < 50:  # if page ends, add new page
+            c.showPage()
+            c.setFont("Helvetica", 12)
+            y = height - 50
+
+    c.save()
     return filename
 
+# Streamlit UI
 st.title("Sentiment Analysis Deployment")
 
 model_choice = st.selectbox("Select Model", list(models.keys()))
@@ -38,8 +53,10 @@ if st.button("Predict"):
     # Load the selected model
     with open(models[model_choice], 'rb') as f:
         model = pickle.load(f)
+
     # Vectorize input text
     text_vec = vectorizer.transform([user_text.lower()])
+
     # Predict sentiment
     pred = model.predict(text_vec)[0]
 
