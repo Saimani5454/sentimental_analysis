@@ -1,74 +1,89 @@
-import pandas as pd
-import re
-import string
+import streamlit as st
 import pickle
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import matplotlib.pyplot as plt
 
-# Load dataset
-df = pd.read_excel("dataset.xlsx")
+# Load vectorizer once
+with open('vectorizer.pkl', 'rb') as f:
+    vectorizer = pickle.load(f)
 
-# Map ratings to sentiment column if it doesn't exist
-if 'sentiment' not in df.columns:
-    def map_sentiment(rating):
-        if rating <= 2:
-            return "Negative"
-        elif rating == 3:
-            return "Neutral"
-        else:
-            return "Positive"
-    df['sentiment'] = df['rating'].apply(map_sentiment)
-
-# Preprocessing function
-def preprocess_text(text):
-    if not isinstance(text, str):
-        text = str(text)
-    text = text.lower()
-    text = re.sub(r"http\S+|www\S+|https\S+", "", text)
-    text = re.sub(r'\d+', '', text)
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = text.strip()
-    return text
-
-# Create combined text column for preprocessing if doesn't exist
-if 'text_preprocessed' not in df.columns:
-    df['text'] = df['body'].fillna('') + ' ' + df['title'].fillna('')
-    df['text_preprocessed'] = df['text'].apply(preprocess_text)
-
-# Define features and target
-X = df['text_preprocessed']
-y = df['sentiment']
-
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y)
-
-# Vectorize text
-vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
-X_train_vec = vectorizer.fit_transform(X_train)
-X_test_vec = vectorizer.transform(X_test)
-
-# Define models
+# Dictionary mapping model names to files
 models = {
-    "LogisticRegression": LogisticRegression(max_iter=1000),
-    "SVM": SVC(kernel='linear', probability=True),
-    "RandomForest": RandomForestClassifier(),
-    "DecisionTree": DecisionTreeClassifier()
+    "Logistic Regression": "LogisticRegression_model.pkl",
+    "SVM": "SVM_model.pkl",
+    "Random Forest": "RandomForest_model.pkl",
+    "Decision Tree": "DecisionTree_model.pkl"
 }
 
-# Train and save models
-for name, model in models.items():
-    print(f"Training {name}...")
-    model.fit(X_train_vec, y_train)
-    with open(f"{name}_model.pkl", 'wb') as f:
-        pickle.dump(model, f)
+# PDF generation using reportlab
+def generate_pdf(text, model_name, prediction, filename="result.pdf"):
+    c = canvas.Canvas(filename, pagesize=letter)
+    width, height = letter
 
-# Save vectorizer
-with open('vectorizer.pkl', 'wb') as f:
-    pickle.dump(vectorizer, f)
+    # Title
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(width / 2, height - 50, "Sentiment Analysis Result")
 
-print("All models and vectorizer saved successfully.")
+    # Model used & prediction
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 100, f"Model Used: {model_name}")
+    c.drawString(50, height - 120, f"Predicted Sentiment: {prediction}")
+
+    # Input text (multi-line support)
+    text_lines = text.split("\n")
+    y = height - 160
+    for line in text_lines:
+        c.drawString(50, y, line)
+        y -= 20
+        if y < 50:  # if page ends, add new page
+            c.showPage()
+            c.setFont("Helvetica", 12)
+            y = height - 50
+
+    c.save()
+    return filename
+
+# Streamlit UI
+st.title("Sentiment Analysis Deployment")
+model_choice = st.selectbox("Select Model", list(models.keys()))
+user_text = st.text_area("Enter text for sentiment analysis:")
+
+if st.button("Predict"):
+    # Load the selected model
+    with open(models[model_choice], 'rb') as f:
+        model = pickle.load(f)
+
+    # Vectorize input text
+    text_vec = vectorizer.transform([user_text.lower()])
+
+    # Predict sentiment
+    pred = model.predict(text_vec)[0]
+
+    st.write(f"**Predicted Sentiment:** {pred}")
+
+    # Visualize sentiment with a simple bar chart (example data)
+    labels = ['Positive', 'Negative', 'Neutral']
+    # Dummy values for visualization; replace with real model outputs if available
+    values = [0, 0, 0]
+    if pred.lower() == 'positive':
+        values = [1, 0, 0]
+    elif pred.lower() == 'negative':
+        values = [0, 1, 0]
+    else:
+        values = [0, 0, 1]
+
+    fig, ax = plt.subplots()
+    ax.bar(labels, values, color=['green', 'red', 'gray'])
+    ax.set_title('Sentiment Prediction Visualization')
+    st.pyplot(fig)
+
+    # Generate PDF and enable download
+    pdf_path = generate_pdf(user_text, model_choice, pred)
+    with open(pdf_path, "rb") as f:
+        st.download_button(
+            label="Download Result as PDF",
+            data=f,
+            file_name=pdf_path,
+            mime="application/pdf"
+        )
