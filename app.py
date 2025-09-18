@@ -2,6 +2,7 @@ import streamlit as st
 import pickle
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+import matplotlib.pyplot as plt
 
 # Load vectorizer once
 with open('vectorizer.pkl', 'rb') as f:
@@ -45,7 +46,6 @@ def generate_pdf(text, model_name, prediction, filename="result.pdf"):
 
 # Streamlit UI
 st.title("Sentiment Analysis Deployment")
-
 model_choice = st.selectbox("Select Model", list(models.keys()))
 user_text = st.text_area("Enter text for sentiment analysis:")
 
@@ -61,6 +61,22 @@ if st.button("Predict"):
     pred = model.predict(text_vec)[0]
 
     st.write(f"**Predicted Sentiment:** {pred}")
+
+    # Visualize sentiment with a simple bar chart (example data)
+    labels = ['Positive', 'Negative', 'Neutral']
+    # Dummy values for visualization; replace with real model outputs if available
+    values = [0, 0, 0]
+    if pred.lower() == 'positive':
+        values = [1, 0, 0]
+    elif pred.lower() == 'negative':
+        values = [0, 1, 0]
+    else:
+        values = [0, 0, 1]
+
+    fig, ax = plt.subplots()
+    ax.bar(labels, values, color=['green', 'red', 'gray'])
+    ax.set_title('Sentiment Prediction Visualization')
+    st.pyplot(fig)
 
     # Generate PDF and enable download
     pdf_path = generate_pdf(user_text, model_choice, pred)
